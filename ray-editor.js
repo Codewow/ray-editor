@@ -27,6 +27,7 @@ class RayEditor {
       this.#addWatermark();
       this.#includeCSS();
       this.#setToolbarType();
+      this.#setDarkMode();
       
       if (this.options.overflowMenu) {
       const debouncedCheck = () => {
@@ -1465,7 +1466,6 @@ class RayEditor {
    dropdown.style.position = 'absolute';
    dropdown.style.top = '100%';
    dropdown.style.right = '0';
-   dropdown.style.background = '#fff';
    dropdown.style.border = '1px solid #ccc';
    dropdown.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
    dropdown.style.display = 'none';
@@ -1594,7 +1594,26 @@ document.addEventListener('click', function hideDropdown(e) {
       this.isSourceMode = false;
    }
 }
-
+#setDarkMode() {
+   if (!this.container) return;
+   if (this.options.darkMode) {
+      this.container.classList.add('ray-editor-dark');
+      if (this.toolbar) this.toolbar.classList.add('ray-editor-dark');
+      if (this.editorArea) this.editorArea.classList.add('ray-editor-dark');
+   }
+}
+setDarkMode(options) {
+   if (!this.container) return;
+   if (options) {
+      this.container.classList.add('ray-editor-dark');
+      if (this.toolbar) this.toolbar.classList.add('ray-editor-dark');
+      if (this.editorArea) this.editorArea.classList.add('ray-editor-dark');
+   } else {
+      this.container.classList.remove('ray-editor-dark');
+      if (this.toolbar) this.toolbar.classList.remove('ray-editor-dark');
+      if (this.editorArea) this.editorArea.classList.remove('ray-editor-dark');
+   }
+}
     
 }
 
