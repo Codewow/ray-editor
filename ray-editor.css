@@ -435,7 +435,8 @@ table.ray-editor-table-highlighted{
 
 .ray-editor-dark .ray-toolbar-overflow-dropdown,
 .ray-editor-toolbar.ray-editor-dark,
- .ray-toolbar-overflow-dropdown.ray-editor-dark {
+ .ray-toolbar-overflow-dropdown.ray-editor-dark,
+ .ray-editor-dark select {
   background: #23272e;
   color: #e0e0e0;
   border-color: #333;
