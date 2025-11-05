@@ -1,6 +1,5 @@
 class RayEditor {
-   constructor(containerId, options = {}, contentId = null) {
-      this.contentId = contentId;
+   constructor(containerId, options = {}) {
       this.container = document.getElementById(containerId);
       this.options = options;
       this.toolbar = null;
@@ -8,74 +7,110 @@ class RayEditor {
       this.imageUploadUrl = null
       this.maxImageSize = null
       this.init();
-      this.toolbarIndex = 0;
-      if(this.options.mentions.mentionTag == ""){
-         this.options.mentions.mentionTag = '@';
-      }
-      this.options.mentions.mentionTag = this.options.mentions.mentionTag || '@';
-      this.options.mentions.mentionTagUnescaped = this.options.mentions.mentionTag;
-      this.options.mentions.mentionTag = this.options.mentions.mentionTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      this.overflowMode = false;
-      this.isSourceMode = false;
-      this.sourceTextarea = null;
-      
    }
    init() {
       this.#createToolbar();
       this.#createEditorArea();
       this.#bindEvents();
-      this.#addWatermark()
+      this.#createTabs();
+      this.activeTab = 'visual';
+
       // Force new lines to be <p>
       document.execCommand('defaultParagraphSeparator', false, 'p');
-      this.#includeCSS();
-      this.#setToolbarType();
-      
-      if (this.options.overflowMenu) {
-      const debouncedCheck = () => {
-         if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
-         this.resizeTimeout = setTimeout(() => {
-            const width = this.toolbar.offsetWidth;
-            if (width !== this.lastToolbarWidth) {
-               this.lastToolbarWidth = width;
-               this.#checkToolbarWidth();
-            }
-         }, 60); 
-      };
-
-      this.resizeObserver = new ResizeObserver(debouncedCheck);
-      this.resizeObserver.observe(this.toolbar);
-
-      window.addEventListener('resize', debouncedCheck);
-      requestAnimationFrame(() => this.#checkToolbarWidth());
+      this.#addWatermark()
    }
+   #createTabs() {
+      const tabContainer = document.createElement('div');
+      tabContainer.style.display = 'flex';
+      tabContainer.style.marginBottom = '8px';
+
+      const visualTab = document.createElement('span');
+      visualTab.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil">
+         <path d="M12 20h9" />
+         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+      <span style="margin-left: 4px;">Visual</span>
+   `;
+      visualTab.style.marginRight = '8px';
+      visualTab.style.border = '1px solid #ccc';
+   visualTab.style.borderRadius = '4px';
+   visualTab.style.padding = '4px 8px';
+   visualTab.style.cursor = 'pointer';
+      visualTab.onclick = () => this.#switchTab('visual');
+
+      const markdownTab = document.createElement('span');
+      markdownTab.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text">
+         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+         <polyline points="14 2 14 8 20 8" />
+         <line x1="16" y1="13" x2="8" y2="13" />
+         <line x1="16" y1="17" x2="8" y2="17" />
+         <line x1="10" y1="9" x2="8" y2="9" />
+      </svg>
+      <span style="margin-left: 4px;">Markdown</span>
+   `;
+   markdownTab.style.border = '1px solid #ccc';
+   markdownTab.style.borderRadius = '4px';
+   markdownTab.style.padding = '4px 8px';
+   markdownTab.style.cursor = 'pointer';
+      markdownTab.onclick = () => this.#switchTab('markdown');
+
+      tabContainer.appendChild(visualTab);
+      tabContainer.appendChild(markdownTab);
+      this.container.prepend(tabContainer);
+
+      // Create Markdown textarea
+      this.markdownArea = document.createElement('textarea');
+      this.markdownArea.style.display = 'none';
+      this.markdownArea.style.width = '100%';
+      this.markdownArea.style.height = '300px';
+      this.markdownArea.style.padding = '1em';
+      this.markdownArea.style.fontFamily = 'monospace';
+      this.container.appendChild(this.markdownArea);
+
+      this.markdownArea.addEventListener('input', () => {
+         const html = marked.parse(this.markdownArea.value);
+         this.editorArea.innerHTML = html;
+      });
+
+      this.editorArea.addEventListener('input', () => {
+         if (this.activeTab === 'markdown') return; // Avoid feedback loop
+         const turndownService = new TurndownService();
+         const markdown = turndownService.turndown(this.editorArea.innerHTML);
+         this.markdownArea.value = markdown;
+      });
    }
+
+   #switchTab(tabName) {
+      this.activeTab = tabName;
+
+      const toolbar = document.querySelector('.ray-editor-toolbar');
+      const isMarkdown = tabName === 'markdown';
+
+      // Enable/disable toolbar based on active tab
+      toolbar.classList.toggle('toolbar-disabled', isMarkdown);
+
+      // Toggle visibility between visual and markdown editors
+      this.editorArea.style.display = isMarkdown ? 'none' : '';
+      this.markdownArea.style.display = isMarkdown ? '' : 'none';
+
+      if (isMarkdown) {
+         const turndownService = new TurndownService();
+         this.markdownArea.value = turndownService.turndown(this.editorArea.innerHTML);
+      } else {
+         this.editorArea.innerHTML = marked.parse(this.markdownArea.value);
+      }
+   }
+
+
    #createToolbar() {
-      if(this.contentId){
-         const contentElement = document.getElementById(this.contentId);
-         if (!contentElement) {
-            console.error(`Content element with ID "${this.contentId}" not found.`);
-            return;
-         }
-         this.container = contentElement.parentNode;
-         this.toolbar = document.createElement('div');
-         this.toolbar.className = 'ray-editor-toolbar';
-         this.container.insertBefore(this.toolbar, contentElement);
-
-      }else{
-         this.toolbar = document.createElement('div');
-         this.toolbar.className = 'ray-editor-toolbar';
-         this.container.appendChild(this.toolbar);
-      }
+      this.toolbar = document.createElement('div');
+      this.toolbar.className = 'ray-editor-toolbar';
+      this.container.appendChild(this.toolbar);
       this.#generateToolbarButtons(buttonConfigs);
-   }
-   addEventListener(event, callback) {
-      console.log(`Adding event listener for: ${event}`);
-      if (!this.editorArea) {
-         console.error('Editor element not found');
-         return;
-      }
-      this.editorArea.addEventListener(event, callback);
-      
    }
    // Method to get the content from the editor
    getRayEditorContent() {
@@ -172,37 +207,6 @@ class RayEditor {
    }
 
    #createEditorArea() {
-   if(this.contentId){
-      const contentElement = document.getElementById(this.contentId);
-      if (!contentElement) {
-         console.error(`Content element with ID "${this.contentId}" not found.`);
-         return;
-      }
-      this.editorArea = document.createElement('div');
-      this.editorArea.className = 'ray-editor-content';
-
-      for (let attr of contentElement.attributes) {
-         if (attr.name === 'class') {
-            this.editorArea.className += ' ' + attr.value;
-         } else if (attr.name !== 'id') {
-            this.editorArea.setAttribute(attr.name, attr.value);
-         }
-      }
-
-      if (contentElement.id) {
-         this.editorArea.id = contentElement.id;
-      }
-
-      this.editorArea.contentEditable = true;
-      this.editorArea.spellcheck = true;
-
-      if (contentElement.tagName === 'TEXTAREA') {
-         this.editorArea.innerHTML = contentElement.value || '<p><br></p>';
-      } else {
-         this.editorArea.innerHTML = contentElement.innerHTML || '<p><br></p>';
-      }
-      contentElement.parentNode.replaceChild(this.editorArea, contentElement);
-   } else {
       this.editorArea = document.createElement('div');
       this.editorArea.className = 'ray-editor-content';
       this.editorArea.contentEditable = true;
@@ -210,16 +214,21 @@ class RayEditor {
       this.editorArea.innerHTML = '<p><br></p>';
       this.container.appendChild(this.editorArea);
    }
-}
    #addWatermark() {
-      if (!this.editorArea || this.options.hideWatermark) return;
+      if (!this.editorArea || document.getElementById('ray-editor-watermark')) return;
+
       const watermark = document.createElement('div');
       watermark.id = 'ray-editor-watermark';
       watermark.innerHTML = `Made with ❤️ by <a href="https://rohanyeole.com" target="_blank" rel="noopener">Rohan Yeole</a>`;
-      // Insert after the editor
-      this.editorArea.parentNode.insertBefore(watermark, this.editorArea.nextLastSibling);
+      watermark.style.fontSize = '0.8em';
+      watermark.style.textAlign = 'center';
+      watermark.style.marginTop = '2em';
+      watermark.style.color = '#888';
 
+      // Append to the container at the end of both editors
+      this.container.appendChild(watermark);
    }
+
    #generateToolbarButtons(buttonConfigs) {
       // for (const key in this.options) {
       Object.keys(buttonConfigs).forEach((key) => {
@@ -303,22 +312,66 @@ class RayEditor {
             this.#openTableModal();
          } else if (config.keyname === 'hr') {
             this.#insertHr();
-         } else if (config.keyname === 'insertDateTime') {
-
-            const blockInsert = confirm("Insert date/time on a new line?");
-            this.#insertDateTime({ block: blockInsert });
-         } else if (config.keyname === 'showSource') {
-            this.#toggleSourceMode();
+         // } else if (config.keyname === 'insertDateTime') {
+         //    this.#insertDateTime();
+         } else if (config.keyname === 'exportWord') {
+            this.#exportToWord();
+         } else if (config.keyname === 'exportPDF') {
+            this.#exportToPDF();
          }
-
       });
 
       this.toolbar.appendChild(btn);
    }
+   #exportToPDF() {
+      const printWindow = window.open('', '', 'width=800,height=600');
+      const content = this.editorArea.innerHTML;
+
+      printWindow.document.write(`
+      <html>
+         <head>
+            <title>Export to PDF</title>
+            <style>
+               body { font-family: sans-serif; padding: 2em; }
+               img { max-width: 100%; }
+            </style>
+         </head>
+         <body>${content}</body>
+      </html>
+   `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+   }
+
+   #exportToWord() {
+      const content = this.editorArea.innerHTML;
+
+      const header = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Export Word</title></head><body>`;
+      const footer = '</body></html>';
+
+      const blob = new Blob([header + content + footer], {
+         type: 'application/msword'
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ray-editor-export.doc';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+   }
+
    #execCommand(command, value = null) {
       document.execCommand(command, false, value);
       this.editorArea.focus();
-      this.#updateToolbar();
    }
    #bindEvents() {
       const events = ['keyup', 'mouseup', 'keydown', 'paste', 'click'];
@@ -333,17 +386,6 @@ class RayEditor {
             if (evt === 'keydown') {
                this.#handleCodeBlockExit(e, elementNode);
                this.#handleInlineCodeExit(e, sel, elementNode);
-            }
-            if (evt === 'keyup'){
-               const mentionRegex = new RegExp('(?:^|\\s)(' + this.options.mentions.mentionTag + '\\w+)', 'g');
-               const text = elementNode.textContent;
-               const match = mentionRegex.exec(text);
-               if (match) {
-                  const mention = match[1];
-                  if (e.key == ' ' || e.key == 'Enter') {
-                     this.#handleMention(mention);
-                  }
-               }
             }
 
             if (evt === 'paste') {
@@ -539,9 +581,9 @@ class RayEditor {
       );
    }
    #insertCodeBlock() {
-   const selection = window.getSelection();
-   if (!selection.rangeCount) return;
-   if (!this.editorArea.contains(selection.anchorNode)) return;
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
       const range = selection.getRangeAt(0);
 
       // Create wrapper div
@@ -768,19 +810,143 @@ class RayEditor {
          newRange.setStart(spacer, 0);
          newRange.collapse(true);
          const sel = window.getSelection();
-         if (!sel || sel.rangeCount === 0) return;
-
-         const range = sel.getRangeAt(0);
-         // Replace range with the resizable image wrapper
-         placeholder.remove()
-         range.insertNode(wrapper);
-
-         // Move the cursor *after* the inserted wrapper
-         range.setStartAfter(wrapper);
-         range.collapse(true);
          sel.removeAllRanges();
          sel.addRange(newRange);
       }
+   }
+   #makeImageResizable(img) {
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.maxWidth = '100%';
+      wrapper.contentEditable = false;
+
+      // Image setup
+      img.style.maxWidth = '100%';
+      img.style.display = 'block';
+      img.style.cursor = 'move';
+      img.style.borderRadius = '4px';
+      img.style.transition = 'box-shadow 0.2s ease';
+
+      wrapper.appendChild(img);
+
+      // Resize handle
+      const handle = document.createElement('div');
+      Object.assign(handle.style, {
+         position: 'absolute',
+         width: '10px',
+         height: '10px',
+         right: '0',
+         bottom: '0',
+         cursor: 'se-resize',
+         background: 'hsl(220, 100%, 60%)',
+         border: '1px solid white',
+         borderRadius: '2px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease',
+      });
+      wrapper.appendChild(handle);
+
+      // Close button
+      const closeBtn = document.createElement('div');
+      closeBtn.innerHTML = '×';
+      Object.assign(closeBtn.style, {
+         position: 'absolute',
+         top: '0',
+         right: '0',
+         width: '20px',
+         height: '20px',
+         background: 'hsla(0, 0%, 0%, 0.7)',
+         color: 'white',
+         display: 'flex',
+         justifyContent: 'center',
+         alignItems: 'center',
+         cursor: 'pointer',
+         borderRadius: '0 0 0 4px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease',
+         fontSize: '16px',
+         lineHeight: '20px'
+      });
+      wrapper.appendChild(closeBtn);
+
+      // Hover visibility for controls
+      wrapper.addEventListener('mouseenter', () => {
+         handle.style.opacity = '1';
+         closeBtn.style.opacity = '1';
+      });
+      wrapper.addEventListener('mouseleave', () => {
+         handle.style.opacity = '0';
+         closeBtn.style.opacity = '0';
+      });
+
+      // Delete image on close click
+      closeBtn.addEventListener('click', (e) => {
+         e.stopPropagation();
+         wrapper.remove();
+      });
+
+      // Click = focus styling
+      wrapper.addEventListener('click', (e) => {
+         e.stopPropagation();
+         img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)';
+
+         const clickOutside = () => {
+            img.style.boxShadow = 'none';
+            document.removeEventListener('click', clickOutside);
+         };
+         setTimeout(() => document.addEventListener('click', clickOutside), 0);
+      });
+
+      // Double-click = reset size
+      img.addEventListener('dblclick', (e) => {
+         e.stopPropagation();
+         img.style.width = '';
+         img.style.height = '';
+      });
+
+      // Resize logic
+      let startX, startY, startWidth, startHeight, aspectRatio;
+
+      handle.addEventListener('mousedown', (e) => {
+         e.preventDefault();
+         e.stopPropagation();
+
+         startX = e.clientX;
+         startY = e.clientY;
+         startWidth = img.clientWidth;
+         startHeight = img.clientHeight;
+         aspectRatio = startWidth / startHeight;
+
+         img.style.boxShadow = '0 0 0 2px hsl(120, 100%, 25%)';
+
+         const doDrag = (e) => {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            let newWidth = startWidth + dx;
+            let newHeight = startHeight + dy;
+
+            // Lock aspect ratio (optional toggle here if you want)
+            if (e.shiftKey) {
+               newHeight = newWidth / aspectRatio;
+            }
+
+            img.style.width = `${Math.max(50, newWidth)}px`;
+            img.style.height = `${Math.max(50, newHeight)}px`;
+         };
+
+         const stopDrag = () => {
+            img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)';
+            document.removeEventListener('mousemove', doDrag);
+            document.removeEventListener('mouseup', stopDrag);
+         };
+
+         document.addEventListener('mousemove', doDrag);
+         document.addEventListener('mouseup', stopDrag);
+      });
+
+      return { wrapper };
    }
 
    #showUploadErrorWithRemove(placeholder, imageName) {
@@ -810,165 +976,7 @@ class RayEditor {
       sel.addRange(range);
    }
 
-   #makeImageResizable(img) {
-      const wrapper = document.createElement('div');
-      wrapper.style.position = 'relative';
-      wrapper.style.display = 'inline-block';
-      wrapper.style.maxWidth = '100%';
-      wrapper.contentEditable = false;
 
-      img.style.maxWidth = '100%';
-      img.style.display = 'block';
-      img.style.cursor = 'pointer';
-      img.style.borderRadius = '4px';
-      img.style.transition = 'box-shadow 0.2s ease';
-
-      wrapper.appendChild(img);
-
-      // Resize handle
-      const handle = document.createElement('div');
-      Object.assign(handle.style, {
-         position: 'absolute',
-         width: '12px',
-         height: '12px',
-         right: '0',
-         bottom: '0',
-         cursor: 'se-resize',
-         background: 'hsl(220, 100%, 60%)',
-         border: '1px solid white',
-         borderRadius: '2px',
-         opacity: '0',
-         transition: 'opacity 0.2s ease',
-      });
-      wrapper.appendChild(handle);
-
-      // Remove icon (larger)
-      const closeBtn = document.createElement('div');
-      closeBtn.innerHTML = '×';
-      Object.assign(closeBtn.style, {
-         position: 'absolute',
-         top: '0',
-         right: '0',
-         width: '24px',
-         height: '24px',
-         fontSize: '18px',
-         background: 'rgba(0, 0, 0, 0.7)',
-         color: 'white',
-         display: 'flex',
-         justifyContent: 'center',
-         alignItems: 'center',
-         cursor: 'pointer',
-         borderRadius: '0 0 0 6px',
-         opacity: '0',
-         transition: 'opacity 0.2s ease'
-      });
-      closeBtn.title = 'Remove Image';
-      closeBtn.addEventListener('click', (e) => {
-         e.stopPropagation();
-         wrapper.remove();
-      });
-      wrapper.appendChild(closeBtn);
-
-      // Edit button overlay
-      const editBtn = document.createElement('button');
-      editBtn.textContent = '✎ Edit';
-      Object.assign(editBtn.style, {
-         position: 'absolute',
-         bottom: '0',
-         left: '0',
-         background: 'rgba(255,255,255,0.9)',
-         fontSize: '12px',
-         padding: '2px 6px',
-         borderRadius: '4px 4px 0 0',
-         border: '1px solid #aaa',
-         cursor: 'pointer',
-         opacity: '0',
-         transition: 'opacity 0.2s ease'
-      });
-      wrapper.appendChild(editBtn);
-
-      editBtn.addEventListener('click', (e) => {
-      // Resize logic (with aspect ratio lock)
-      let startX, startY, startWidth, startHeight;
-      // **Modified resizing logic (constrains aspect ratio)**
-      handle.addEventListener('mousedown', (e) => {
-         e.preventDefault();
-         e.stopPropagation();
-         this.#openImageEditor(img, wrapper);
-      });
-
-      // Hover behavior
-      wrapper.addEventListener('mouseenter', () => {
-         handle.style.opacity = '1';
-         closeBtn.style.opacity = '1';
-         editBtn.style.opacity = '1';
-      });
-      wrapper.addEventListener('mouseleave', () => {
-         handle.style.opacity = '0';
-         closeBtn.style.opacity = '0';
-         editBtn.style.opacity = '0';
-      });
-
-      // **Return BOTH the wrapper AND the new line for proper insertion**
-      return {
-         wrapper,
-      };
-   })
-}
-#openImageEditor(originalImg, wrapper) {
-   const editor = document.createElement('div');
-   editor.className = 'ray-img-editor-modal';
-   editor.style.position = 'fixed';
-   editor.style.top = '50%';
-   editor.style.left = '50%';
-   editor.style.transform = 'translate(-50%, -50%)';
-   editor.style.background = 'white';
-   editor.style.padding = '1em';
-   editor.style.boxShadow = '0 0 20px rgba(0,0,0,0.3)';
-   editor.style.zIndex = '9999';
-   editor.style.maxWidth = '90vw';
-   editor.style.maxHeight = '90vh';
-   editor.style.overflow = 'auto';
-
-   editor.innerHTML = `
-      <h3>Edit Image</h3>
-      <canvas id="cropCanvas" style="max-width:100%; border:1px dashed #ccc; margin-bottom: 10px;"></canvas><br/>
-      <label>Alt: <input type="text" id="altInput" value="${originalImg.alt || ''}" /></label><br/>
-      <label>Title: <input type="text" id="titleInput" value="${originalImg.title || ''}" /></label><br/>
-      <button id="saveBtn">✅ Save</button>
-      <button id="cancelBtn">❌ Cancel</button>
-   `;
-
-   document.body.appendChild(editor);
-
-   const canvas = editor.querySelector('#cropCanvas');
-   const ctx = canvas.getContext('2d');
-   const img = new Image();
-   img.crossOrigin = 'anonymous'; // Required for canvas use in some cases
-   img.src = originalImg.src;
-
-   img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-   };
-
-   editor.querySelector('#cancelBtn').onclick = () => editor.remove();
-
-   editor.querySelector('#saveBtn').onclick = () => {
-      const alt = editor.querySelector('#altInput').value;
-      const title = editor.querySelector('#titleInput').value;
-
-      // Crop image from canvas
-      const newDataUrl = canvas.toDataURL('image/png');
-
-      originalImg.src = newDataUrl;
-      originalImg.alt = alt;
-      originalImg.title = title;
-
-      editor.remove();
-   };
-};
    #triggerFileUpload() {
       const input = document.createElement('input');
       input.type = 'file';
@@ -1001,6 +1009,7 @@ class RayEditor {
       input.click();
       document.body.removeChild(input);
    }
+
    #handleFileUpload(file) {
 
       if (!this.fileUploadUrl) {
@@ -1477,359 +1486,71 @@ class RayEditor {
       selection.addRange(newRange);
    }
 
-   #insertDateTime({ block = false } = {}) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
+//   #insertDateTime() {
+//    const selection = window.getSelection();
+//    if (!selection.rangeCount) return;
 
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
+//    const range = selection.getRangeAt(0);
 
-      const now = new Date();
-      const formatted = now.toLocaleString(); // Customize format as needed
+//    // Create an input element to pick date and time
+//    const picker = document.createElement('input');
+//    picker.type = 'datetime-local';
+//    picker.style.position = 'fixed';
+//    picker.style.left = '-9999px'; // Hide it off-screen
+//    document.body.appendChild(picker);
 
-      // Create date element
-      const dateEl = document.createElement(block ? 'div' : 'span');
-      dateEl.textContent = formatted;
-      dateEl.contentEditable = 'false';
-      dateEl.className = 'ray-date-time';
-      dateEl.style.fontSize = '0.85em';
-      dateEl.style.color = '#666';
-      dateEl.style.margin = '0.5em 0';
-      dateEl.style.display = block ? 'block' : 'inline';
-      dateEl.style.userSelect = 'none';
-      dateEl.style.cursor = 'pointer';
-      dateEl.title = 'Click to remove date/time';
+//    // Trigger the input click to open the picker
+//    picker.click();
 
-      // Allow user to remove
-      dateEl.addEventListener('click', () => {
-         if (confirm('Remove this date/time?')) dateEl.remove();
-      });
+//    picker.addEventListener('change', () => {
+//       const selectedDate = picker.value;
+//       document.body.removeChild(picker);
 
-      // Add invisible space after date for caret
-      const space = document.createTextNode('\u200B');
+//       if (!selectedDate) return; // user cancelled
 
-      // Create a fragment to insert both nodes
-      const frag = document.createDocumentFragment();
-      frag.appendChild(dateEl);
-      frag.appendChild(space);
+//       const formatted = new Date(selectedDate).toLocaleString(); // format to user locale
 
-      // Insert date + space
-      range.insertNode(frag);
+//       // Create date element
+//       const dateEl = document.createElement('span');
+//       dateEl.contentEditable = 'true'; // allow inline editing
+//       dateEl.textContent = formatted;
+//       dateEl.className = 'ray-date-time';
+//       dateEl.style.fontSize = '0.85em';
+//       dateEl.style.color = '#666';
+//       dateEl.style.margin = '0.5em 0';
+//       dateEl.style.userSelect = 'none';
+//       dateEl.style.cursor = 'pointer';
 
-      // Move caret after the space
-      const newRange = document.createRange();
-      newRange.setStartAfter(space);
-      newRange.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-   }
+//       dateEl.title = 'Click to remove date/time';
 
-   #handleMention(username) {
-      if(!this.options.mentions.enableMentions) return;
-      let mentionElement = 'span';
-      if(this.options.mentions.mentionElement) {
-         if(!this.options.mentions.mentionElement === 'span' && !this.options.mentions.mentionElement === 'a') return;
-            mentionElement = this.options.mentions.mentionElement === 'a' ? 'a' : 'span';
-      }
-      let cleanUsername = username.replace(/[^a-zA-Z0-9_]/g, '');
-      const mentionNode = document.createElement(mentionElement);
-      mentionNode.className = 'mention ray-mention';
-      mentionNode.contentEditable = 'false';
-      mentionNode.textContent = this.options.mentions.mentionTagUnescaped;
-      if (mentionElement === 'a') {
-         if(!this.options.mentions.mentionUrl || this.options.mentions.mentionUrl.trim() === '') {
-            console.warn('Mention URL is not configured. Please configure "mentionUrl" when initializing the editor.');
-            mentionNode.href = '#';
-         }else{
-            mentionNode.href = this.options.mentions.mentionUrl + cleanUsername;
-            mentionNode.target = '_blank'; 
-         }
+//       // Make removable
+//       dateEl.addEventListener('click', () => {
+//          if (confirm('Remove this date/time?')) dateEl.remove();
+//       });
 
-      }
-      mentionNode.setAttribute('data-mention', username);
-      
-      let content = this.editorArea.innerHTML;
-      let regexReplace = new RegExp(this.options.mentions.mentionTag + '(\\w+)','g');
-      content = content.replace(regexReplace, (match, username) => {
-         let cleanUsername = username.replace(/[^a-zA-Z0-9_]/g, '');
-         let mentionElement = 'span';
-         if (this.options.mentions.mentionElement === 'a') {
-            mentionElement = 'a';
-         }
-         const mention = document.createElement(mentionElement);
-         mention.className = 'mention ray-mention';
-         mention.contentEditable = 'false';
-         mention.textContent =  this.options.mentions.mentionTagUnescaped + `${cleanUsername}`;
-         
-         if (mentionElement === 'a') {
-            if (!this.options.mentions.mentionUrl || this.options.mentions.mentionUrl.trim() === '') {
-               mention.href = '#';
-            } else {
-               mention.href = this.options.mentions.mentionUrl + cleanUsername;
-               mention.target = '_blank';
-            }
-         }
-         mention.setAttribute('data-mention', cleanUsername);
-         mention.dataset.username = cleanUsername;
-         return mention.outerHTML;
-      });
-      this.editorArea.innerHTML = content;
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(this.editorArea);
-      range.collapse(false); 
-      sel.removeAllRanges();
-      sel.addRange(range);
-      this.editorArea.focus();
-   }
+//       // Add invisible space for caret
+//       const space = document.createTextNode('\u200B');
 
-   #includeCSS(){
-      if(!this.options.initStyles) return;
+//       // Insert into DOM
+//       const frag = document.createDocumentFragment();
+//       frag.appendChild(dateEl);
+//       frag.appendChild(space);
 
-      let styleCount = document.querySelector('.ray-editor-styles')
-      if(!styleCount || styleCount.length === 0){
-      const style = document.createElement('link');
-      style.rel = 'stylesheet';
-      style.type = 'text/css';
-      style.className = 'ray-editor-styles';
-      style.href = 'https://cdn.jsdelivr.net/gh/yeole-rohan/ray-editor@main/ray-editor.css';
-      // Use the provided stylesheet URL or fallback to the CDN
-      if(this.options.stylesheetUrl && this.options.stylesheetUrl.length > 0){
-         style.href = this.options.stylesheetUrl
-      }
-      return window.document.head.appendChild(style);
-      }
-    }
+//       range.deleteContents();
+//       range.insertNode(frag);
 
-    #setToolbarType(){
-      if(!this.options.toolbarType || this.options.toolbarType === 'default') return;
-
-      this.toolbar.classList.add(`ray-editor-toolbar-${this.options.toolbarType}`);
-      this.toolbar.id = 'ray-editor-toolbar-'+this.toolbarIndex;
-      this.toolbarIndex++;
-
-      if(this.options.toolbarType === 'inline'){
-         this.editorArea.addEventListener('focus', () => {
-            this.toolbar.style.display = 'flex';
-         });
-      const maybeHideToolbar = (e) => {
-         
-         const next = e.relatedTarget;
-         if (
-            !this.editorArea.contains(next) &&
-            !this.toolbar.contains(next)
-         ) {
-            this.toolbar.style.display = 'none';
-         }
-      };
-
-      this.editorArea.addEventListener('blur', maybeHideToolbar, true);
-      this.toolbar.addEventListener('blur', maybeHideToolbar, true);
-      this.toolbar.tabIndex = -1;
-      }
-    }
-   #checkToolbarWidth() {
-   if(this.toolbar.style.display === 'none' || 
-      this.toolbar.parentElement.style.display === 'none') return;
-   if (
-      this.toolbar.style.display === 'none' ||
-      this.toolbar.parentElement.style.display === 'none' ||
-      this.toolbar.offsetParent === null
-   ) return;
-
-   const oldOverflowBtn = this.toolbar.querySelector('.ray-btn-overflowMenu');
-   const oldDropdown = this.toolbar.querySelector('.ray-toolbar-overflow-dropdown');
-   if (oldOverflowBtn) oldOverflowBtn.remove();
-   if (oldDropdown) oldDropdown.remove();
-
-   const toolbarRect = this.toolbar.offsetWidth;
-   const toolbarStyle = getComputedStyle(this.toolbar);
-   const toolbarWidth = toolbarRect 
-      - parseFloat(toolbarStyle.paddingLeft || 0)
-      - parseFloat(toolbarStyle.paddingRight || 0);
-
-   let buttons = Array.from(this.toolbar.querySelectorAll('button:not(.ray-btn-overflowMenu)'));
-   let select = Array.from(this.toolbar.querySelectorAll('select'));
-   
-   buttons = buttons.concat(select);
-   let totalButtonWidth = 0;
-   let overflowStartIdx = buttons.length;
-
-   for (let i = 0; i < buttons.length; i++) {
-      const rect = buttons[i].offsetWidth;
-      totalButtonWidth += rect + 10;
-   }
-   if (totalButtonWidth < toolbarWidth) {
-      buttons.forEach(btn => btn.style.display = '');
-      return;
-   }
-   let overflowBtn = document.createElement('button');
-   overflowBtn.type = 'button';
-   overflowBtn.className = 'ray-btn ray-btn-overflowMenu';
-   overflowBtn.innerHTML = buttonConfigs.overflowMenu.label;
-   overflowBtn.style.visibility = 'hidden';
-   document.body.appendChild(overflowBtn);
-   const overflowBtnWidth = overflowBtn.offsetWidth;
-
-   document.body.removeChild(overflowBtn);
-   totalButtonWidth = 0;
-   for (let i = 0; i < buttons.length; i++) {
-      const rect = buttons[i].offsetWidth;
-      if (totalButtonWidth + rect > toolbarWidth - overflowBtnWidth) {
-         overflowStartIdx = i;
-         break;
-      }
-      totalButtonWidth += rect + 10;
-   }
-
-   const overflowed = buttons.slice(overflowStartIdx);
-   overflowed.forEach(btn => btn.style.display = 'none');
-
-   overflowBtn = document.createElement('button');
-   overflowBtn.type = 'button';
-   overflowBtn.className = 'ray-btn ray-btn-overflowMenu';
-   overflowBtn.innerHTML = buttonConfigs.overflowMenu.label;
-   overflowBtn.style.position = 'relative';
+//       // Set caret after inserted content
+//       const newRange = document.createRange();
+//       newRange.setStartAfter(space);
+//       newRange.collapse(true);
+//       selection.removeAllRanges();
+//       selection.addRange(newRange);
+//    });
+// }
 
 
-   const dropdown = document.createElement('div');
-   dropdown.className = 'ray-toolbar-overflow-dropdown';
-   dropdown.style.position = 'absolute';
-   dropdown.style.top = '100%';
-   dropdown.style.right = '0';
-   dropdown.style.background = '#fff';
-   dropdown.style.border = '1px solid #ccc';
-   dropdown.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-   dropdown.style.display = 'none';
-   dropdown.style.zIndex = '1000';
-   dropdown.style.minWidth = '120px';
-   dropdown.style.maxHeight = '220px';
-   dropdown.style.overflowY = 'auto';
 
-   overflowed.forEach(btn => {
-   if (btn.tagName === 'SELECT') {
-      const selectClone = btn.cloneNode(true);
-      selectClone.style.display = 'block';
-
-      const keyname = Array.from(btn.classList).find(cls => cls.startsWith('ray-dropdown-'));
-      let configKey = keyname ? keyname.replace('ray-dropdown-', '') : null;
-      if(configKey === 'heading'){
-         configKey = 'headings'; // Normalize to match buttonConfigs
-      }
-      const config = buttonConfigs[configKey];
-      if (config && config.options) {
-         selectClone.addEventListener('change', () => {
-            if (configKey === 'headings') {
-               let value = selectClone.value;
-               if (value.startsWith('<') && value.endsWith('>')) {
-                  value = value.slice(1, -1);
-               }
-               this.#execCommand('formatBlock', value);
-            } else {
-               const selected = config.options[selectClone.selectedOptions[0].textContent.toLowerCase().replace(/\s/g, '')];
-               if (selected?.cmd) {
-                  this.#execCommand(selected.cmd, selected.value);
-               }
-            }
-         });
-      }
-      dropdown.appendChild(selectClone);
-      return;
-   }
-
-   const keyname = btn.id.replace('ray-btn-', '');
-   const config = buttonConfigs[keyname];
-   if (!config) return;
-   const newBtn = document.createElement('button');
-   newBtn.type = 'button';
-   newBtn.className = btn.className;
-   newBtn.innerHTML = btn.innerHTML;
-   newBtn.title = btn.title;
-   newBtn.setAttribute('data-tooltip', btn.getAttribute('data-tooltip'));
-   newBtn.style.display = 'block';
-
-   newBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (config.cmd) {
-         this.#execCommand(config.cmd, config.value || null);
-      } else if (config.keyname === 'uppercase') {
-         this.#transformSelectedText('upper');
-      } else if (config.keyname === 'lowercase') {
-         this.#transformSelectedText('lower');
-      } else if (config.keyname === 'toggleCase') {
-         this.#toggleTextCase();
-      } else if (config.keyname === 'codeBlock') {
-         this.#insertCodeBlock();
-      } else if (config.keyname === 'codeInline') {
-         this.#insertInlineCode();
-      } else if (config.keyname === 'backgroundColor') {
-         this.#applyBackgroundColor();
-      } else if (config.keyname === 'textColor') {
-         this.#applyTextColor();
-      } else if (config.keyname === 'imageUpload') {
-         this.#triggerImageUpload();
-      } else if (config.keyname === 'fileUpload') {
-         this.#triggerFileUpload();
-      } else if (config.keyname === 'link') {
-         this.#openLinkModal();
-      } else if (config.keyname === 'removeFormat') {
-         this.#execCommand('removeFormat');
-      } else if (config.keyname === 'table') {
-         this.#openTableModal();
-      }
-      dropdown.style.display = 'none';
-   });
-
-   dropdown.appendChild(newBtn);
-});
-
-let dropdownOpen = false;
-overflowBtn.addEventListener('click', (e) => {
-   e.stopPropagation();
-   if (!dropdown.contains(e.target)) {
-      dropdownOpen = !dropdownOpen;
-      dropdown.style.display = dropdownOpen ? 'block' : 'none';
-   }
-});
-dropdown.addEventListener('click', (e) => {
-   e.stopPropagation();
-});
-document.addEventListener('click', function hideDropdown(e) {
-   if (dropdownOpen && !dropdown.contains(e.target) && e.target !== overflowBtn) {
-      dropdown.style.display = 'none';
-      dropdownOpen = false;
-   }
-});
-
-   overflowBtn.appendChild(dropdown);
-   this.toolbar.appendChild(overflowBtn);
 }
-#toggleSourceMode() {
-   if (!this.editorArea) return;
-
-   if (!this.isSourceMode) {
-      this.sourceTextarea = document.createElement('textarea');
-      this.sourceTextarea.className = 'ray-editor-sourcearea';
-      this.sourceTextarea.style.width = '100%';
-      this.sourceTextarea.style.height = this.editorArea.offsetHeight + 'px';
-      this.sourceTextarea.value = this.editorArea.innerHTML;
-      this.editorArea.style.display = 'none';
-      this.editorArea.parentNode.insertBefore(this.sourceTextarea, this.editorArea);
-      this.isSourceMode = true;
-   } else {
-      if (this.sourceTextarea) {
-         this.editorArea.innerHTML = this.sourceTextarea.value;
-         this.sourceTextarea.parentNode.removeChild(this.sourceTextarea);
-         this.sourceTextarea = null;
-      }
-      this.editorArea.style.display = '';
-      this.isSourceMode = false;
-   }
-}
-
-    
-}
-
 const buttonConfigs = {
    bold: {
       label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bold-icon lucide-bold"><path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"/></svg>`,
@@ -1965,18 +1686,34 @@ const buttonConfigs = {
       keyname: "hr",
       label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-horizontal-rule"><line x1="4" y1="12" x2="20" y2="12"/></svg>`,
    },
-   insertDateTime: {
-      keyname: "insertDateTime",
-      label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`
+   // insertDateTime: {
+   //    keyname: "insertDateTime",
+   //    label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`
+   // },
+   exportPDF: {
+      keyname: "exportPDF",
+      label: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         class="lucide lucide-file-text">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" x2="8" y1="13" y2="13"/>
+      <line x1="16" x2="8" y1="17" y2="17"/>
+      <line x1="10" x2="8" y1="9" y2="9"/>
+    </svg>`
+   },
+   exportWord: {
+      keyname: "exportWord",
+      label: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         class="lucide lucide-file-word">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <path d="M9 15l1-4 1 4 1-4 1 4"/>
+    </svg>`
    }
-   ,
-
-   overflowMenu: {
-      keyname: "overflowMenu",
-      label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-more-horizontal-icon lucide-more-horizontal"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`,
-   },
-   showSource: {
-   keyname: "showSource",
-   label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
-   },
 }
