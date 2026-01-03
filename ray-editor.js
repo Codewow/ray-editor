@@ -47,7 +47,100 @@ class RayEditor {
       window.addEventListener('resize', debouncedCheck);
       requestAnimationFrame(() => this.#checkToolbarWidth());
    }
+      this.#createTabs();
+      this.activeTab = 'visual';
+
+      // Force new lines to be <p>
+      document.execCommand('defaultParagraphSeparator', false, 'p');
+      this.#addWatermark()
    }
+   #createTabs() {
+      const tabContainer = document.createElement('div');
+      tabContainer.style.display = 'flex';
+      tabContainer.style.marginBottom = '8px';
+
+      const visualTab = document.createElement('span');
+      visualTab.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil">
+         <path d="M12 20h9" />
+         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+      <span style="margin-left: 4px;">Visual</span>
+   `;
+      visualTab.style.marginRight = '8px';
+      visualTab.style.border = '1px solid #ccc';
+   visualTab.style.borderRadius = '4px';
+   visualTab.style.padding = '4px 8px';
+   visualTab.style.cursor = 'pointer';
+      visualTab.onclick = () => this.#switchTab('visual');
+
+      const markdownTab = document.createElement('span');
+      markdownTab.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text">
+         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+         <polyline points="14 2 14 8 20 8" />
+         <line x1="16" y1="13" x2="8" y2="13" />
+         <line x1="16" y1="17" x2="8" y2="17" />
+         <line x1="10" y1="9" x2="8" y2="9" />
+      </svg>
+      <span style="margin-left: 4px;">Markdown</span>
+   `;
+   markdownTab.style.border = '1px solid #ccc';
+   markdownTab.style.borderRadius = '4px';
+   markdownTab.style.padding = '4px 8px';
+   markdownTab.style.cursor = 'pointer';
+      markdownTab.onclick = () => this.#switchTab('markdown');
+
+      tabContainer.appendChild(visualTab);
+      tabContainer.appendChild(markdownTab);
+      this.container.prepend(tabContainer);
+
+      // Create Markdown textarea
+      this.markdownArea = document.createElement('textarea');
+      this.markdownArea.style.display = 'none';
+      this.markdownArea.style.width = '100%';
+      this.markdownArea.style.height = '300px';
+      this.markdownArea.style.padding = '1em';
+      this.markdownArea.style.fontFamily = 'monospace';
+      this.container.appendChild(this.markdownArea);
+
+      this.markdownArea.addEventListener('input', () => {
+         const html = marked.parse(this.markdownArea.value);
+         this.editorArea.innerHTML = html;
+      });
+
+      this.editorArea.addEventListener('input', () => {
+         if (this.activeTab === 'markdown') return; // Avoid feedback loop
+         const turndownService = new TurndownService();
+         const markdown = turndownService.turndown(this.editorArea.innerHTML);
+         this.markdownArea.value = markdown;
+      });
+   }
+
+   #switchTab(tabName) {
+      this.activeTab = tabName;
+
+      const toolbar = document.querySelector('.ray-editor-toolbar');
+      const isMarkdown = tabName === 'markdown';
+
+      // Enable/disable toolbar based on active tab
+      toolbar.classList.toggle('toolbar-disabled', isMarkdown);
+
+      // Toggle visibility between visual and markdown editors
+      this.editorArea.style.display = isMarkdown ? 'none' : '';
+      this.markdownArea.style.display = isMarkdown ? '' : 'none';
+
+      if (isMarkdown) {
+         const turndownService = new TurndownService();
+         this.markdownArea.value = turndownService.turndown(this.editorArea.innerHTML);
+      } else {
+         this.editorArea.innerHTML = marked.parse(this.markdownArea.value);
+      }
+   }
+
+
    #createToolbar() {
       if(this.contentId){
          const contentElement = document.getElementById(this.contentId);
@@ -236,10 +329,15 @@ class RayEditor {
       const watermark = document.createElement('div');
       watermark.id = 'ray-editor-watermark';
       watermark.innerHTML = `Made with ❤️ by <a href="https://rohanyeole.com" target="_blank" rel="noopener">Rohan Yeole</a>`;
-      // Insert after the editor
-      this.editorArea.parentNode.insertBefore(watermark, this.editorArea.nextSibling);
+      watermark.style.fontSize = '0.8em';
+      watermark.style.textAlign = 'center';
+      watermark.style.marginTop = '2em';
+      watermark.style.color = '#888';
 
+      // Append to the container at the end of both editors
+      this.container.appendChild(watermark);
    }
+
    #generateToolbarButtons(buttonConfigs) {
       // for (const key in this.options) {
       Object.keys(buttonConfigs).forEach((key) => {
@@ -323,11 +421,65 @@ class RayEditor {
             this.#openTableModal();
          } else if (config.keyname === 'showSource') {
             this.#toggleSourceMode();
+         } else if (config.keyname === 'hr') {
+            this.#insertHr();
+         // } else if (config.keyname === 'insertDateTime') {
+         //    this.#insertDateTime();
+         } else if (config.keyname === 'exportWord') {
+            this.#exportToWord();
+         } else if (config.keyname === 'exportPDF') {
+            this.#exportToPDF();
          }
       });
 
       this.toolbar.appendChild(btn);
    }
+   #exportToPDF() {
+      const printWindow = window.open('', '', 'width=800,height=600');
+      const content = this.editorArea.innerHTML;
+
+      printWindow.document.write(`
+      <html>
+         <head>
+            <title>Export to PDF</title>
+            <style>
+               body { font-family: sans-serif; padding: 2em; }
+               img { max-width: 100%; }
+            </style>
+         </head>
+         <body>${content}</body>
+      </html>
+   `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+   }
+
+   #exportToWord() {
+      const content = this.editorArea.innerHTML;
+
+      const header = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Export Word</title></head><body>`;
+      const footer = '</body></html>';
+
+      const blob = new Blob([header + content + footer], {
+         type: 'application/msword'
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ray-editor-export.doc';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+   }
+
    #execCommand(command, value = null) {
       document.execCommand(command, false, value);
       this.editorArea.focus();
@@ -495,11 +647,31 @@ class RayEditor {
       iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
       iframe.allowFullscreen = true;
       iframe.className = 'ray-youtube-embed';
+      iframe.style.display = 'block';
+      iframe.style.margin = '1em 0';
 
-      const range = window.getSelection().getRangeAt(0);
+      // Create an editable paragraph after the iframe
+      const afterPara = document.createElement('p');
+      afterPara.innerHTML = '<br>';
+
+      const frag = document.createDocumentFragment();
+      frag.appendChild(iframe);
+      frag.appendChild(afterPara);
+
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
       range.deleteContents();
-      range.insertNode(iframe);
+      range.insertNode(frag);
+
+      // Move caret into the new paragraph
+      const newRange = document.createRange();
+      newRange.setStart(afterPara, 0);
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
    }
+
    #applyTextTransformation(transformFn) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
@@ -704,38 +876,204 @@ class RayEditor {
          });
    }
    #insertUploadPlaceholder(filename) {
+      const range = window.getSelection()?.getRangeAt(0);
+      if (!range) return null;
+
       const placeholder = document.createElement('div');
       placeholder.className = 'upload-placeholder';
       placeholder.textContent = `Uploading ${filename}...`;
-      this.editorArea.appendChild(placeholder);
+      placeholder.style.margin = '1em 0';
+      placeholder.style.color = '#888';
+      placeholder.contentEditable = 'false';
+
+      // New paragraph after placeholder
+      const spacer = document.createElement('p');
+      spacer.innerHTML = '<br>';
+
+      const frag = document.createDocumentFragment();
+      frag.appendChild(placeholder);
+      frag.appendChild(spacer);
+
+      range.deleteContents();
+      range.insertNode(frag);
+
+      // Move caret into spacer
+      const newRange = document.createRange();
+      newRange.setStart(spacer, 0);
+      newRange.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+
       return placeholder;
    }
+
    #replacePlaceholderWithImage(placeholder, imageUrl, imageName) {
       const img = document.createElement('img');
       img.src = imageUrl;
       img.alt = imageName;
       img.title = imageName;
-      // Set width and height once the image is fully loaded
+
       img.onload = () => {
-         // Create resizable image and get both wrapper and editable line
          const { wrapper } = this.#makeImageResizable(img);
+         wrapper.style.margin = '1em 0';
+
+         const spacer = document.createElement('p');
+         spacer.innerHTML = '<br>';
+
+         const frag = document.createDocumentFragment();
+         frag.appendChild(wrapper);
+         frag.appendChild(spacer);
+
+         // Replace placeholder with image + spacer
+         placeholder.replaceWith(frag);
+
+         // Move caret after image
+         const newRange = document.createRange();
+         newRange.setStart(spacer, 0);
+         newRange.collapse(true);
          const sel = window.getSelection();
-         if (!sel || sel.rangeCount === 0) return;
-
-         const range = sel.getRangeAt(0);
-         // Replace range with the resizable image wrapper
-         placeholder.remove()
-         range.insertNode(wrapper);
-
-         // Move the cursor *after* the inserted wrapper
-         range.setStartAfter(wrapper);
-         range.collapse(true);
          sel.removeAllRanges();
-         sel.addRange(range);
+         sel.addRange(newRange);
       }
    }
-   #showUploadErrorWithRemove(placeholder, imagename) {
-      placeholder.innerHTML = `❌ Failed to upload "${imagename}"`;
+   #makeImageResizable(img) {
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.maxWidth = '100%';
+      wrapper.contentEditable = false;
+
+      // Image setup
+      img.style.maxWidth = '100%';
+      img.style.display = 'block';
+      img.style.cursor = 'move';
+      img.style.borderRadius = '4px';
+      img.style.transition = 'box-shadow 0.2s ease';
+
+      wrapper.appendChild(img);
+
+      // Resize handle
+      const handle = document.createElement('div');
+      Object.assign(handle.style, {
+         position: 'absolute',
+         width: '10px',
+         height: '10px',
+         right: '0',
+         bottom: '0',
+         cursor: 'se-resize',
+         background: 'hsl(220, 100%, 60%)',
+         border: '1px solid white',
+         borderRadius: '2px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease',
+      });
+      wrapper.appendChild(handle);
+
+      // Close button
+      const closeBtn = document.createElement('div');
+      closeBtn.innerHTML = '×';
+      Object.assign(closeBtn.style, {
+         position: 'absolute',
+         top: '0',
+         right: '0',
+         width: '20px',
+         height: '20px',
+         background: 'hsla(0, 0%, 0%, 0.7)',
+         color: 'white',
+         display: 'flex',
+         justifyContent: 'center',
+         alignItems: 'center',
+         cursor: 'pointer',
+         borderRadius: '0 0 0 4px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease',
+         fontSize: '16px',
+         lineHeight: '20px'
+      });
+      wrapper.appendChild(closeBtn);
+
+      // Hover visibility for controls
+      wrapper.addEventListener('mouseenter', () => {
+         handle.style.opacity = '1';
+         closeBtn.style.opacity = '1';
+      });
+      wrapper.addEventListener('mouseleave', () => {
+         handle.style.opacity = '0';
+         closeBtn.style.opacity = '0';
+      });
+
+      // Delete image on close click
+      closeBtn.addEventListener('click', (e) => {
+         e.stopPropagation();
+         wrapper.remove();
+      });
+
+      // Click = focus styling
+      wrapper.addEventListener('click', (e) => {
+         e.stopPropagation();
+         img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)';
+
+         const clickOutside = () => {
+            img.style.boxShadow = 'none';
+            document.removeEventListener('click', clickOutside);
+         };
+         setTimeout(() => document.addEventListener('click', clickOutside), 0);
+      });
+
+      // Double-click = reset size
+      img.addEventListener('dblclick', (e) => {
+         e.stopPropagation();
+         img.style.width = '';
+         img.style.height = '';
+      });
+
+      // Resize logic
+      let startX, startY, startWidth, startHeight, aspectRatio;
+
+      handle.addEventListener('mousedown', (e) => {
+         e.preventDefault();
+         e.stopPropagation();
+
+         startX = e.clientX;
+         startY = e.clientY;
+         startWidth = img.clientWidth;
+         startHeight = img.clientHeight;
+         aspectRatio = startWidth / startHeight;
+
+         img.style.boxShadow = '0 0 0 2px hsl(120, 100%, 25%)';
+
+         const doDrag = (e) => {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            let newWidth = startWidth + dx;
+            let newHeight = startHeight + dy;
+
+            // Lock aspect ratio (optional toggle here if you want)
+            if (e.shiftKey) {
+               newHeight = newWidth / aspectRatio;
+            }
+
+            img.style.width = `${Math.max(50, newWidth)}px`;
+            img.style.height = `${Math.max(50, newHeight)}px`;
+         };
+
+         const stopDrag = () => {
+            img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)';
+            document.removeEventListener('mousemove', doDrag);
+            document.removeEventListener('mouseup', stopDrag);
+         };
+
+         document.addEventListener('mousemove', doDrag);
+         document.addEventListener('mouseup', stopDrag);
+      });
+
+      return { wrapper };
+   }
+
+   #showUploadErrorWithRemove(placeholder, imageName) {
+      placeholder.innerHTML = `❌ Failed to upload "${imageName}"`;
 
       const removeBtn = document.createElement('button');
       removeBtn.textContent = 'Remove';
@@ -747,115 +1085,21 @@ class RayEditor {
 
       removeBtn.onclick = () => placeholder.remove();
       placeholder.appendChild(removeBtn);
+
+      const spacer = document.createElement('p');
+      spacer.innerHTML = '<br>';
+      placeholder.after(spacer);
+
+      // Move caret to spacer
+      const range = document.createRange();
+      range.setStart(spacer, 0);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
    }
-   #makeImageResizable(img) {
-      const wrapper = document.createElement('div');
-      wrapper.style.position = 'relative';
-      wrapper.style.display = 'inline-block';
-      wrapper.contentEditable = false;
 
-      // Style image for better UX
-      img.style.maxWidth = '100%';
-      img.style.display = 'block';
-      img.style.cursor = 'move';
-      img.style.borderRadius = '4px';
-      img.style.transition = 'box-shadow 0.2s ease';
-      wrapper.appendChild(img);
 
-      // Resize handle (visual indicator for dragging)
-      const handle = document.createElement('div');
-      handle.style.position = 'absolute';
-      handle.style.width = '10px';
-      handle.style.height = '10px';
-      handle.style.right = '0';
-      handle.style.bottom = '0';
-      handle.style.cursor = 'se-resize';
-      handle.style.background = 'hsl(220, 100%, 60%)';
-      handle.style.border = '1px solid white';
-      handle.style.borderRadius = '2px';
-      handle.style.opacity = '0'; // Start hidden
-      handle.style.transition = 'opacity 0.2s ease';
-      wrapper.appendChild(handle);
-
-      // Close Button (Top-Right)
-      const closeBtn = document.createElement('div');
-      closeBtn.innerHTML = '×';
-      closeBtn.style.position = 'absolute';
-      closeBtn.style.top = '0';
-      closeBtn.style.right = '0';
-      closeBtn.style.cursor = 'pointer';
-      closeBtn.style.background = 'hsla(0, 0%, 0%, 0.7)';
-      closeBtn.style.color = 'white';
-      closeBtn.style.width = '20px';
-      closeBtn.style.height = '20px';
-      closeBtn.style.borderRadius = '0 0 0 4px';
-      closeBtn.style.display = 'flex';
-      closeBtn.style.justifyContent = 'center';
-      closeBtn.style.alignItems = 'center';
-      closeBtn.style.opacity = '0';
-      closeBtn.style.transition = 'opacity 0.2s ease';
-      // Show/hide close button on hover/focus
-      wrapper.addEventListener('mouseenter', () => closeBtn.style.opacity = '1');
-      wrapper.addEventListener('mouseleave', () => closeBtn.style.opacity = '0');
-
-      // Delete on click
-      closeBtn.addEventListener('click', (e) => {
-         e.stopPropagation();
-         wrapper.remove(); // Remove entire resizable wrapper + image
-      });
-
-      wrapper.appendChild(closeBtn);
-      // Add subtle border when image is active
-      wrapper.addEventListener('click', (e) => {
-         e.stopPropagation();
-         img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)'; // Blue focus ring
-         handle.style.opacity = '1'; // Show handle
-
-         // Hide handle when clicking elsewhere
-         setTimeout(() => {
-            const clickOutsideHandler = () => {
-               handle.style.opacity = '0';
-               img.style.boxShadow = 'none';
-               document.removeEventListener('click', clickOutsideHandler);
-            };
-            document.addEventListener('click', clickOutsideHandler);
-         }, 0);
-      });
-
-      // Resize logic (with aspect ratio lock)
-      let startX, startY, startWidth, startHeight;
-      // **Modified resizing logic (constrains aspect ratio)**
-      handle.addEventListener('mousedown', (e) => {
-         e.preventDefault();
-         e.stopPropagation();
-         startX = e.clientX;
-         startY = e.clientY;
-         startWidth = img.clientWidth;
-         startHeight = img.clientHeight;
-         img.style.boxShadow = '0 0 0 2px hsl(120, 100%, 25%)'; // Green during resize
-
-         const doDrag = (e) => {
-            const newWidth = startWidth + (e.clientX - startX);
-            const newHeight = startHeight + (e.clientY - startY);
-            img.style.width = `${Math.max(50, newWidth)}px`; // Min 50px
-            img.style.height = `${Math.max(50, newHeight)}px`;
-         };
-
-         function stopDrag() {
-            img.style.boxShadow = '0 0 0 2px hsl(220, 100%, 60%)'; // Revert to blue
-            document.removeEventListener('mousemove', doDrag);
-            document.removeEventListener('mouseup', stopDrag);
-         }
-
-         document.addEventListener('mousemove', doDrag);
-         document.addEventListener('mouseup', stopDrag);
-      });
-
-      // **Return BOTH the wrapper AND the new line for proper insertion**
-      return {
-         wrapper,
-      };
-   }
    #triggerFileUpload() {
       const input = document.createElement('input');
       input.type = 'file';
@@ -1242,7 +1486,7 @@ class RayEditor {
          { tag: 'sup', style: null, btn: 'ray-btn-superscript' },
          { tag: 'li', style: null, btn: 'ray-btn-orderedList' },
          { tag: 'ol', style: null, btn: 'ray-btn-unorderedList' },
-         { tag: 'font', style: null, btn: 'ray-btn-textColor' },
+         { tag: 'font', style: ['color'], btn: 'ray-btn-textColor' },
          { tag: 'code', style: null, btn: 'ray-btn-codeInline' }
       ];
 
@@ -1260,25 +1504,54 @@ class RayEditor {
       }
 
       // Handle heading dropdown
-      const headings = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'];
+      const headings = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'blockquote'];
       const matchedHeading = headings.find(tag => this.#isInTag(parent, tag)) || 'p';
       const headingSelect = document.querySelector('.ray-dropdown-heading');
       if (headingSelect) headingSelect.value = `<${matchedHeading}>`;
 
+      // Handle font dropdown - UPDATED VERSION
+      const availableFonts = ['Arial', 'Georgia', 'Verdana']; // Add your font options
+      const currentFont = this.#getCurrentFontFamily(parent);
+      const fontSelect = document.querySelector('.ray-dropdown-fonts');
+      if (fontSelect) {
+         // Find the matching font from your dropdown options
+         const matchedFont = availableFonts.find(font =>
+            currentFont.toLowerCase().includes(font.toLowerCase())
+         ) || 'Arial';
+         fontSelect.value = matchedFont;
+      }
+
       // alignment dropdown
       let matchedAlignment = parent.getAttribute('align') || 'left';
-
       const alignmentSelect = document.querySelector('.ray-dropdown-textAlignment');
       if (alignmentSelect) alignmentSelect.value = `${matchedAlignment}`;
    }
 
-   #isInStyle(el, styleProp, value) {
+   // NEW HELPER METHOD to get current font family
+   #getCurrentFontFamily(el) {
       while (el && el !== document) {
-         if (window.getComputedStyle(el)[styleProp] === value) return true;
+         const fontFamily = window.getComputedStyle(el).fontFamily;
+         // Return the first font in the font-family stack
+         if (fontFamily && fontFamily !== 'inherit') {
+            return fontFamily.split(',')[0].replace(/['"]/g, '').trim();
+         }
+         el = el.parentNode;
+      }
+      return '';
+   }
+
+   #isInStyle(el, styleProp, value = null) {
+      while (el && el !== document) {
+         if (value) {
+            if (window.getComputedStyle(el)[styleProp] === value) return true;
+         } else {
+            if (window.getComputedStyle(el)[styleProp]) return true;
+         }
          el = el.parentNode;
       }
       return false;
    }
+
    #isInTag(el, tagName) {
       while (el && el !== document) {
          if (el.tagName && el.tagName.toLowerCase() === tagName) return true;
@@ -1571,6 +1844,114 @@ document.addEventListener('click', function hideDropdown(e) {
 
    overflowBtn.appendChild(dropdown);
    this.toolbar.appendChild(overflowBtn);
+   #insertHr() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      range.collapse(true); // Caret only
+
+      // Delete any selected contents
+      range.deleteContents();
+
+      // Create <hr>
+      const hr = document.createElement('hr');
+      hr.setAttribute('contenteditable', 'false');
+      hr.classList.add('ray-editor-hr');
+      hr.style.cursor = 'pointer';
+      hr.style.border = '1px solid #ccc';
+      hr.style.margin = '1em 0';
+
+      hr.addEventListener('click', () => {
+         if (confirm('Remove this horizontal line?')) hr.remove();
+      });
+
+      // Add a newline paragraph after <hr> so user can continue typing
+      const paragraph = document.createElement('p');
+      paragraph.innerHTML = '<br>'; // makes it visibly editable
+      paragraph.style.margin = '0';
+
+      // Create fragment to insert multiple nodes
+      const frag = document.createDocumentFragment();
+      frag.appendChild(hr);
+      frag.appendChild(paragraph);
+
+      // Insert the fragment at caret position
+      range.insertNode(frag);
+
+      // Move caret inside new paragraph
+      const newRange = document.createRange();
+      newRange.setStart(paragraph, 0);
+      newRange.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+   }
+
+//   #insertDateTime() {
+//    const selection = window.getSelection();
+//    if (!selection.rangeCount) return;
+
+//    const range = selection.getRangeAt(0);
+
+//    // Create an input element to pick date and time
+//    const picker = document.createElement('input');
+//    picker.type = 'datetime-local';
+//    picker.style.position = 'fixed';
+//    picker.style.left = '-9999px'; // Hide it off-screen
+//    document.body.appendChild(picker);
+
+//    // Trigger the input click to open the picker
+//    picker.click();
+
+//    picker.addEventListener('change', () => {
+//       const selectedDate = picker.value;
+//       document.body.removeChild(picker);
+
+//       if (!selectedDate) return; // user cancelled
+
+//       const formatted = new Date(selectedDate).toLocaleString(); // format to user locale
+
+//       // Create date element
+//       const dateEl = document.createElement('span');
+//       dateEl.contentEditable = 'true'; // allow inline editing
+//       dateEl.textContent = formatted;
+//       dateEl.className = 'ray-date-time';
+//       dateEl.style.fontSize = '0.85em';
+//       dateEl.style.color = '#666';
+//       dateEl.style.margin = '0.5em 0';
+//       dateEl.style.userSelect = 'none';
+//       dateEl.style.cursor = 'pointer';
+
+//       dateEl.title = 'Click to remove date/time';
+
+//       // Make removable
+//       dateEl.addEventListener('click', () => {
+//          if (confirm('Remove this date/time?')) dateEl.remove();
+//       });
+
+//       // Add invisible space for caret
+//       const space = document.createTextNode('\u200B');
+
+//       // Insert into DOM
+//       const frag = document.createDocumentFragment();
+//       frag.appendChild(dateEl);
+//       frag.appendChild(space);
+
+//       range.deleteContents();
+//       range.insertNode(frag);
+
+//       // Set caret after inserted content
+//       const newRange = document.createRange();
+//       newRange.setStartAfter(space);
+//       newRange.collapse(true);
+//       selection.removeAllRanges();
+//       selection.addRange(newRange);
+//    });
+// }
+
+
+
 }
 #toggleSourceMode() {
    if (!this.editorArea) return;
@@ -1686,7 +2067,17 @@ const buttonConfigs = {
          heading3: { label: 'Heading 3', cmd: 'formatBlock', value: '<h3>' },
          heading4: { label: 'Heading 4', cmd: 'formatBlock', value: '<h4>' },
          heading5: { label: 'Heading 5', cmd: 'formatBlock', value: '<h5>' },
-         heading6: { label: 'Heading 6', cmd: 'formatBlock', value: '<h6>' }
+         heading6: { label: 'Heading 6', cmd: 'formatBlock', value: '<h6>' },
+         blockquote: { label: 'Blockquote', cmd: 'formatBlock', value: 'blockquote' }
+      }
+   },
+   fonts: {
+      dropdown: true,
+      keyname: 'fonts',
+      options: {
+         arial: { label: 'Arial', cmd: 'fontName', value: 'Arial' },
+         georgia: { label: 'Georgia', cmd: 'fontName', value: 'Georgia' },
+         verdana: { label: 'Verdana', cmd: 'fontName', value: 'Verdana' },
       }
    },
    toggleCase: {
@@ -1746,4 +2137,38 @@ const buttonConfigs = {
    keyname: "showSource",
    label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
    },
+   hr: {
+      keyname: "hr",
+      label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-horizontal-rule"><line x1="4" y1="12" x2="20" y2="12"/></svg>`,
+   },
+   // insertDateTime: {
+   //    keyname: "insertDateTime",
+   //    label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`
+   // },
+   exportPDF: {
+      keyname: "exportPDF",
+      label: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         class="lucide lucide-file-text">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" x2="8" y1="13" y2="13"/>
+      <line x1="16" x2="8" y1="17" y2="17"/>
+      <line x1="10" x2="8" y1="9" y2="9"/>
+    </svg>`
+   },
+   exportWord: {
+      keyname: "exportWord",
+      label: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         class="lucide lucide-file-word">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <path d="M9 15l1-4 1 4 1-4 1 4"/>
+    </svg>`
+   }
 }

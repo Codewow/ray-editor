@@ -100,14 +100,14 @@
 
 ## 🛠️ Setup Guide
 
-### 1. Include RayEditor via CDN
+### 1. Include RayEditor
 
 ```html
 <!-- RayEditor CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/yeole-rohan/ray-editor@main/ray-editor.css">
+<link rel="stylesheet" href="https://rohanyeole.com/static/css/ray_editor/ray-editor.css">
 
 <!-- RayEditor JS -->
-<script src='https://cdn.jsdelivr.net/gh/yeole-rohan/ray-editor@main/ray-editor.js'></script>
+<script src='https://rohanyeole.com/static/js/ray_editor/ray-editor.js'></script>
 ```
 
 ### 2. Add an Editor Container
