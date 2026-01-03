@@ -24,6 +24,9 @@ class RayEditor {
       this.#createToolbar();
       this.#createEditorArea();
       this.#bindEvents();
+      this.#addWatermark()
+      // Force new lines to be <p>
+      document.execCommand('defaultParagraphSeparator', false, 'p');
       this.#addWatermark();
       this.#includeCSS();
       this.#setToolbarType();
@@ -333,6 +336,8 @@ class RayEditor {
       watermark.style.textAlign = 'center';
       watermark.style.marginTop = '2em';
       watermark.style.color = '#888';
+      // Insert after the editor
+      this.editorArea.parentNode.insertBefore(watermark, this.editorArea.nextLastSibling);
 
       // Append to the container at the end of both editors
       this.container.appendChild(watermark);
@@ -419,6 +424,12 @@ class RayEditor {
             this.#execCommand('removeFormat')
          } else if (config.keyname === 'table') {
             this.#openTableModal();
+         } else if (config.keyname === 'hr') {
+            this.#insertHr();
+         } else if (config.keyname === 'insertDateTime') {
+
+            const blockInsert = confirm("Insert date/time on a new line?");
+            this.#insertDateTime({ block: blockInsert });
          } else if (config.keyname === 'showSource') {
             this.#toggleSourceMode();
          } else if (config.keyname === 'hr') {
@@ -430,6 +441,7 @@ class RayEditor {
          } else if (config.keyname === 'exportPDF') {
             this.#exportToPDF();
          }
+
       });
 
       this.toolbar.appendChild(btn);
@@ -1098,7 +1110,167 @@ class RayEditor {
       sel.removeAllRanges();
       sel.addRange(range);
    }
+   #makeImageResizable(img) {
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.maxWidth = '100%';
+      wrapper.contentEditable = false;
 
+      img.style.maxWidth = '100%';
+      img.style.display = 'block';
+      img.style.cursor = 'pointer';
+      img.style.borderRadius = '4px';
+      img.style.transition = 'box-shadow 0.2s ease';
+
+      wrapper.appendChild(img);
+
+      // Resize handle
+      const handle = document.createElement('div');
+      Object.assign(handle.style, {
+         position: 'absolute',
+         width: '12px',
+         height: '12px',
+         right: '0',
+         bottom: '0',
+         cursor: 'se-resize',
+         background: 'hsl(220, 100%, 60%)',
+         border: '1px solid white',
+         borderRadius: '2px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease',
+      });
+      wrapper.appendChild(handle);
+
+      // Remove icon (larger)
+      const closeBtn = document.createElement('div');
+      closeBtn.innerHTML = '×';
+      Object.assign(closeBtn.style, {
+         position: 'absolute',
+         top: '0',
+         right: '0',
+         width: '24px',
+         height: '24px',
+         fontSize: '18px',
+         background: 'rgba(0, 0, 0, 0.7)',
+         color: 'white',
+         display: 'flex',
+         justifyContent: 'center',
+         alignItems: 'center',
+         cursor: 'pointer',
+         borderRadius: '0 0 0 6px',
+         opacity: '0',
+         transition: 'opacity 0.2s ease'
+      });
+      closeBtn.title = 'Remove Image';
+      closeBtn.addEventListener('click', (e) => {
+         e.stopPropagation();
+         wrapper.remove();
+      });
+      wrapper.appendChild(closeBtn);
+
+      // Edit button overlay
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎ Edit';
+      Object.assign(editBtn.style, {
+         position: 'absolute',
+         bottom: '0',
+         left: '0',
+         background: 'rgba(255,255,255,0.9)',
+         fontSize: '12px',
+         padding: '2px 6px',
+         borderRadius: '4px 4px 0 0',
+         border: '1px solid #aaa',
+         cursor: 'pointer',
+         opacity: '0',
+         transition: 'opacity 0.2s ease'
+      });
+      wrapper.appendChild(editBtn);
+
+      editBtn.addEventListener('click', (e) => {
+      // Resize logic (with aspect ratio lock)
+      let startX, startY, startWidth, startHeight;
+      // **Modified resizing logic (constrains aspect ratio)**
+      handle.addEventListener('mousedown', (e) => {
+         e.preventDefault();
+         e.stopPropagation();
+         this.#openImageEditor(img, wrapper);
+      });
+
+      // Hover behavior
+      wrapper.addEventListener('mouseenter', () => {
+         handle.style.opacity = '1';
+         closeBtn.style.opacity = '1';
+         editBtn.style.opacity = '1';
+      });
+      wrapper.addEventListener('mouseleave', () => {
+         handle.style.opacity = '0';
+         closeBtn.style.opacity = '0';
+         editBtn.style.opacity = '0';
+      });
+
+      // **Return BOTH the wrapper AND the new line for proper insertion**
+      return {
+         wrapper,
+      };
+   }
+
+#openImageEditor(originalImg, wrapper) {
+   const editor = document.createElement('div');
+   editor.className = 'ray-img-editor-modal';
+   editor.style.position = 'fixed';
+   editor.style.top = '50%';
+   editor.style.left = '50%';
+   editor.style.transform = 'translate(-50%, -50%)';
+   editor.style.background = 'white';
+   editor.style.padding = '1em';
+   editor.style.boxShadow = '0 0 20px rgba(0,0,0,0.3)';
+   editor.style.zIndex = '9999';
+   editor.style.maxWidth = '90vw';
+   editor.style.maxHeight = '90vh';
+   editor.style.overflow = 'auto';
+
+   editor.innerHTML = `
+      <h3>Edit Image</h3>
+      <canvas id="cropCanvas" style="max-width:100%; border:1px dashed #ccc; margin-bottom: 10px;"></canvas><br/>
+      <label>Alt: <input type="text" id="altInput" value="${originalImg.alt || ''}" /></label><br/>
+      <label>Title: <input type="text" id="titleInput" value="${originalImg.title || ''}" /></label><br/>
+      <button id="saveBtn">✅ Save</button>
+      <button id="cancelBtn">❌ Cancel</button>
+   `;
+
+   document.body.appendChild(editor);
+
+   const canvas = editor.querySelector('#cropCanvas');
+   const ctx = canvas.getContext('2d');
+   const img = new Image();
+   img.crossOrigin = 'anonymous'; // Required for canvas use in some cases
+   img.src = originalImg.src;
+
+   img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+   };
+
+   editor.querySelector('#cancelBtn').onclick = () => editor.remove();
+
+   editor.querySelector('#saveBtn').onclick = () => {
+      const alt = editor.querySelector('#altInput').value;
+      const title = editor.querySelector('#titleInput').value;
+
+      // Crop image from canvas
+      const newDataUrl = canvas.toDataURL('image/png');
+
+      originalImg.src = newDataUrl;
+      originalImg.alt = alt;
+      originalImg.title = title;
+
+      editor.remove();
+   };
+
+   // (Optional: Add draggable crop rectangle and ratio enforcement logic)
+}
 
    #triggerFileUpload() {
       const input = document.createElement('input');
@@ -1564,6 +1736,96 @@ class RayEditor {
       document.querySelectorAll('.ray-editor-toolbar button').forEach(btn => {
          btn.classList.remove('active');
       });
+   }
+   #insertHr() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      range.collapse(true); // Caret only
+
+      // Delete any selected contents
+      range.deleteContents();
+
+      // Create <hr>
+      const hr = document.createElement('hr');
+      hr.setAttribute('contenteditable', 'false');
+      hr.classList.add('ray-editor-hr');
+      hr.style.cursor = 'pointer';
+      hr.style.border = '1px solid #ccc';
+      hr.style.margin = '1em 0';
+
+      hr.addEventListener('click', () => {
+         if (confirm('Remove this horizontal line?')) hr.remove();
+      });
+
+      // Add a newline paragraph after <hr> so user can continue typing
+      const paragraph = document.createElement('p');
+      paragraph.innerHTML = '<br>'; // makes it visibly editable
+      paragraph.style.margin = '0';
+
+      // Create fragment to insert multiple nodes
+      const frag = document.createDocumentFragment();
+      frag.appendChild(hr);
+      frag.appendChild(paragraph);
+
+      // Insert the fragment at caret position
+      range.insertNode(frag);
+
+      // Move caret inside new paragraph
+      const newRange = document.createRange();
+      newRange.setStart(paragraph, 0);
+      newRange.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+   }
+
+   #insertDateTime({ block = false } = {}) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+
+      const now = new Date();
+      const formatted = now.toLocaleString(); // Customize format as needed
+
+      // Create date element
+      const dateEl = document.createElement(block ? 'div' : 'span');
+      dateEl.textContent = formatted;
+      dateEl.contentEditable = 'false';
+      dateEl.className = 'ray-date-time';
+      dateEl.style.fontSize = '0.85em';
+      dateEl.style.color = '#666';
+      dateEl.style.margin = '0.5em 0';
+      dateEl.style.display = block ? 'block' : 'inline';
+      dateEl.style.userSelect = 'none';
+      dateEl.style.cursor = 'pointer';
+      dateEl.title = 'Click to remove date/time';
+
+      // Allow user to remove
+      dateEl.addEventListener('click', () => {
+         if (confirm('Remove this date/time?')) dateEl.remove();
+      });
+
+      // Add invisible space after date for caret
+      const space = document.createTextNode('\u200B');
+
+      // Create a fragment to insert both nodes
+      const frag = document.createDocumentFragment();
+      frag.appendChild(dateEl);
+      frag.appendChild(space);
+
+      // Insert date + space
+      range.insertNode(frag);
+
+      // Move caret after the space
+      const newRange = document.createRange();
+      newRange.setStartAfter(space);
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
    }
 
    #handleMention(username) {
@@ -2129,6 +2391,16 @@ const buttonConfigs = {
       keyname: "table",
       label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-table-icon lucide-table"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>`,
    },
+   hr: {
+      keyname: "hr",
+      label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-horizontal-rule"><line x1="4" y1="12" x2="20" y2="12"/></svg>`,
+   },
+   insertDateTime: {
+      keyname: "insertDateTime",
+      label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`
+   }
+   ,
+
    overflowMenu: {
       keyname: "overflowMenu",
       label: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-more-horizontal-icon lucide-more-horizontal"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`,
